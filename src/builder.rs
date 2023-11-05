@@ -109,6 +109,59 @@ impl FlatbushBuilder {
         index
     }
 
+    pub fn add_interleaved(&mut self, boxes: &[f64]) {
+        debug_assert!(boxes.len() % 4 == 0);
+        let num_boxes = boxes.len() / 4;
+
+        let (tree_boxes, indices) = split_data_borrow(
+            &mut self.data,
+            self.num_nodes,
+            self.nodes_byte_size,
+            self.indices_byte_size,
+        );
+
+        tree_boxes[self.pos..self.pos + boxes.len()].clone_from_slice(boxes);
+
+        match indices {
+            MutableIndices::U16(indices_arr) => {
+                let current_index = self.pos >> 2;
+                let new_indices =
+                    Vec::from_iter(current_index as u16..(current_index + num_boxes) as u16);
+                indices_arr[current_index..current_index + num_boxes]
+                    .clone_from_slice(&new_indices);
+            }
+            MutableIndices::U32(indices_arr) => {
+                let current_index = self.pos >> 2;
+                let new_indices =
+                    Vec::from_iter(current_index as u32..(current_index + num_boxes) as u32);
+                indices_arr[current_index..current_index + num_boxes]
+                    .clone_from_slice(&new_indices);
+            }
+        }
+
+        self.pos += boxes.len();
+
+        for box_ in boxes.chunks(4) {
+            let min_x = box_[0];
+            let min_y = box_[1];
+            let max_x = box_[2];
+            let max_y = box_[3];
+
+            if min_x < self.min_x {
+                self.min_x = min_x
+            };
+            if min_y < self.min_y {
+                self.min_y = min_y
+            };
+            if max_x > self.max_x {
+                self.max_x = max_x
+            };
+            if max_y > self.max_y {
+                self.max_y = max_y
+            };
+        }
+    }
+
     pub fn finish(mut self) -> OwnedFlatbush {
         assert_eq!(
             self.pos >> 2,

@@ -22,6 +22,12 @@ fn construct_flatbush(boxes_buf: &[f64]) -> OwnedFlatbush {
     builder.finish()
 }
 
+fn construct_flatbush_bulk(boxes_buf: &[f64]) -> OwnedFlatbush {
+    let mut builder = FlatbushBuilder::new(boxes_buf.len() / 4);
+    builder.add_interleaved(boxes_buf);
+    builder.finish()
+}
+
 fn construct_rstar(rect_vec: Vec<Rectangle<(f64, f64)>>) -> RTree<Rectangle<(f64, f64)>> {
     RTree::bulk_load(rect_vec)
 }
@@ -36,6 +42,10 @@ pub fn criterion_benchmark(c: &mut Criterion) {
 
     c.bench_function("construction (flatbush)", |b| {
         b.iter(|| construct_flatbush(&boxes_buf))
+    });
+
+    c.bench_function("construction (flatbush bulk)", |b| {
+        b.iter(|| construct_flatbush_bulk(&boxes_buf))
     });
 
     c.bench_function("construction (rstar bulk)", |b| {
@@ -56,6 +66,26 @@ pub fn criterion_benchmark(c: &mut Criterion) {
             rstar_tree.locate_in_envelope(&aabb)
         })
     });
+
+    let aabb = AABB::from_corners((min_x, min_y), (max_x, max_y));
+    let out: Vec<_> = rstar_tree.locate_in_envelope(&aabb).collect();
+
+    // println!(
+    //     "Num search results: {}",
+    //     flatbush_tree.search(min_x, min_y, max_x, max_y).len()
+    // );
+    // println!(
+    //     "Num search results: {}",
+    //     out.len()
+    // );
+    // println!(
+    //     "Size of flatbush index: {}",
+    //     flatbush_tree.into_inner().len()
+    // );
+    // println!(
+    //     "Size of rtree index: {}",
+    //     std::mem::size_of_val(&rstar_tree)
+    // );
 }
 
 criterion_group!(benches, criterion_benchmark);
