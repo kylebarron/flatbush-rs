@@ -1,15 +1,22 @@
+use crate::r#type::IndexableNum;
 use crate::FlatbushIndex;
 use core::mem::take;
+use std::marker::PhantomData;
 
 #[derive(Clone)]
-pub struct Node<'a, T: FlatbushIndex> {
+pub struct Node<'a, N: IndexableNum, T: FlatbushIndex<N>> {
     tree: &'a T,
     index: usize,
+    phantom: PhantomData<N>,
 }
 
-impl<'a, T: FlatbushIndex> Node<'a, T> {
+impl<'a, N: IndexableNum, T: FlatbushIndex<N>> Node<'a, N, T> {
     pub fn new(tree: &'a T, index: usize) -> Self {
-        Self { tree, index }
+        Self {
+            tree,
+            index,
+            phantom: PhantomData,
+        }
     }
 
     pub fn from_root(tree: &'a T) -> Self {
@@ -17,22 +24,23 @@ impl<'a, T: FlatbushIndex> Node<'a, T> {
         Self {
             tree,
             index: root_index,
+            phantom: PhantomData,
         }
     }
 
-    pub fn min_x(&self) -> f64 {
+    pub fn min_x(&self) -> N {
         self.tree.boxes()[self.index]
     }
 
-    pub fn min_y(&self) -> f64 {
+    pub fn min_y(&self) -> N {
         self.tree.boxes()[self.index + 1]
     }
 
-    pub fn max_x(&self) -> f64 {
+    pub fn max_x(&self) -> N {
         self.tree.boxes()[self.index + 2]
     }
 
-    pub fn max_y(&self) -> f64 {
+    pub fn max_y(&self) -> N {
         self.tree.boxes()[self.index + 3]
     }
 
@@ -44,7 +52,7 @@ impl<'a, T: FlatbushIndex> Node<'a, T> {
         !self.is_leaf()
     }
 
-    pub fn intersects<T2: FlatbushIndex>(&self, other: &Node<T2>) -> bool {
+    pub fn intersects<T2: FlatbushIndex<N>>(&self, other: &Node<N, T2>) -> bool {
         if self.max_x() < other.min_x() {
             return false;
         }
@@ -64,7 +72,7 @@ impl<'a, T: FlatbushIndex> Node<'a, T> {
         true
     }
 
-    pub fn children(&self) -> impl Iterator<Item = Node<'_, T>> {
+    pub fn children(&self) -> impl Iterator<Item = Node<'_, N, T>> {
         // find the end index of the node
         let end = (self.index + self.tree.node_size() * 4)
             .min(upper_bound(self.index, self.tree.level_bounds()));
@@ -78,21 +86,24 @@ impl<'a, T: FlatbushIndex> Node<'a, T> {
 
 // This is copied from rstar under the MIT/Apache 2 license
 // https://github.com/georust/rstar/blob/6c23af0f3acc0c4668ce6c368820e0fa986a65b4/rstar/src/algorithm/intersection_iterator.rs
-pub struct IntersectionIterator<'a, T1, T2>
+pub struct IntersectionIterator<'a, N, T1, T2>
 where
-    T1: FlatbushIndex,
-    T2: FlatbushIndex,
+    N: IndexableNum,
+    T1: FlatbushIndex<N>,
+    T2: FlatbushIndex<N>,
 {
     left: &'a T1,
     right: &'a T2,
     todo_list: Vec<(usize, usize)>,
     candidates: Vec<usize>,
+    phantom: PhantomData<N>,
 }
 
-impl<'a, T1, T2> IntersectionIterator<'a, T1, T2>
+impl<'a, N, T1, T2> IntersectionIterator<'a, N, T1, T2>
 where
-    T1: FlatbushIndex,
-    T2: FlatbushIndex,
+    N: IndexableNum,
+    T1: FlatbushIndex<N>,
+    T2: FlatbushIndex<N>,
 {
     pub(crate) fn from_trees(root1: &'a T1, root2: &'a T2) -> Self {
         let mut intersections = IntersectionIterator {
@@ -100,30 +111,32 @@ where
             right: root2,
             todo_list: Vec::new(),
             candidates: Vec::new(),
+            phantom: PhantomData,
         };
         intersections.add_intersecting_children(&root1.root(), &root2.root());
         intersections
     }
 
     #[allow(dead_code)]
-    pub(crate) fn new(root1: &'a Node<T1>, root2: &'a Node<T2>) -> Self {
+    pub(crate) fn new(root1: &'a Node<N, T1>, root2: &'a Node<N, T2>) -> Self {
         let mut intersections = IntersectionIterator {
             left: root1.tree,
             right: root2.tree,
             todo_list: Vec::new(),
             candidates: Vec::new(),
+            phantom: PhantomData,
         };
         intersections.add_intersecting_children(root1, root2);
         intersections
     }
 
-    fn push_if_intersecting(&mut self, node1: &'_ Node<T1>, node2: &'_ Node<T2>) {
+    fn push_if_intersecting(&mut self, node1: &'_ Node<N, T1>, node2: &'_ Node<N, T2>) {
         if node1.intersects(node2) {
             self.todo_list.push((node1.index, node2.index));
         }
     }
 
-    fn add_intersecting_children(&mut self, parent1: &'_ Node<T1>, parent2: &'_ Node<T2>) {
+    fn add_intersecting_children(&mut self, parent1: &'_ Node<N, T1>, parent2: &'_ Node<N, T2>) {
         if !parent1.intersects(parent2) {
             return;
         }
@@ -149,10 +162,11 @@ where
     }
 }
 
-impl<'a, T1, T2> Iterator for IntersectionIterator<'a, T1, T2>
+impl<'a, N, T1, T2> Iterator for IntersectionIterator<'a, N, T1, T2>
 where
-    T1: FlatbushIndex,
-    T2: FlatbushIndex,
+    N: IndexableNum,
+    T1: FlatbushIndex<N>,
+    T2: FlatbushIndex<N>,
 {
     type Item = (usize, usize);
 

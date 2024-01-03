@@ -8,6 +8,8 @@ rust-version = "1.75"
 
 [dependencies]
 bytemuck = "1"
+float_next_after = "1"
+num-traits = "0.2"
 thiserror = "1"
 tinyvec = { version = "1", features = ["alloc", "rustc_1_40"] }
 

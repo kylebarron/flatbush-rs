@@ -7,10 +7,9 @@ use crate::flatbush::index::OwnedFlatbush;
 use crate::flatbush::sort::{Sort, SortParams};
 use crate::flatbush::util::compute_num_nodes;
 use crate::indices::MutableIndices;
+use crate::r#type::IndexableNum;
 
-const ARRAY_TYPE_INDEX: u8 = 8;
-
-pub struct FlatbushBuilder {
+pub struct FlatbushBuilder<N: IndexableNum> {
     /// data buffer
     data: Vec<u8>,
     num_items: usize,
@@ -22,17 +21,13 @@ pub struct FlatbushBuilder {
 
     pos: usize,
 
-    min_x: f64,
-    min_y: f64,
-    max_x: f64,
-    max_y: f64,
-
-    // Used in the future to have
-    // FlatbushBuilder<T>
-    _type: PhantomData<f64>,
+    min_x: N,
+    min_y: N,
+    max_x: N,
+    max_y: N,
 }
 
-impl FlatbushBuilder {
+impl<N: IndexableNum> FlatbushBuilder<N> {
     pub fn new(num_items: usize) -> Self {
         Self::new_with_node_size(num_items, 16)
     }
@@ -43,9 +38,8 @@ impl FlatbushBuilder {
 
         let (num_nodes, level_bounds) = compute_num_nodes(num_items, node_size);
 
-        let f64_bytes_per_element = 8;
         let indices_bytes_per_element = if num_nodes < 16384 { 2 } else { 4 };
-        let nodes_byte_size = num_nodes * 4 * f64_bytes_per_element;
+        let nodes_byte_size = num_nodes * 4 * N::BYTES_PER_ELEMENT;
         let indices_byte_size = num_nodes * indices_bytes_per_element;
 
         let data_buffer_length = 8 + nodes_byte_size + indices_byte_size;
@@ -53,7 +47,7 @@ impl FlatbushBuilder {
 
         // Set data header
         data[0] = 0xfb;
-        data[1] = (VERSION << 4) + ARRAY_TYPE_INDEX;
+        data[1] = (VERSION << 4) + N::TYPE_INDEX;
         cast_slice_mut(&mut data[2..4])[0] = node_size as u16;
         cast_slice_mut(&mut data[4..8])[0] = num_items as u32;
 
@@ -66,16 +60,16 @@ impl FlatbushBuilder {
             nodes_byte_size,
             indices_byte_size,
             pos: 0,
-            min_x: f64::INFINITY,
-            min_y: f64::INFINITY,
-            max_x: f64::NEG_INFINITY,
-            max_y: f64::NEG_INFINITY,
-            _type: PhantomData,
+            min_x: N::max_value(),
+            min_y: N::max_value(),
+            max_x: N::min_value(),
+            max_y: N::min_value(),
         }
     }
 
     /// Add a given rectangle to the index.
-    pub fn add(&mut self, min_x: f64, min_y: f64, max_x: f64, max_y: f64) -> usize {
+    #[inline]
+    pub fn add(&mut self, min_x: N, min_y: N, max_x: N, max_y: N) -> usize {
         let index = self.pos >> 2;
         let (boxes, mut indices) = split_data_borrow(
             &mut self.data,
@@ -110,7 +104,7 @@ impl FlatbushBuilder {
         index
     }
 
-    pub fn finish<S: Sort>(mut self) -> OwnedFlatbush {
+    pub fn finish<S: Sort<N>>(mut self) -> OwnedFlatbush<N> {
         assert_eq!(
             self.pos >> 2,
             self.num_items,
@@ -143,6 +137,7 @@ impl FlatbushBuilder {
                 num_items: self.num_items,
                 num_nodes: self.num_nodes,
                 level_bounds: self.level_bounds,
+                phantom: PhantomData,
             };
         }
 
@@ -177,13 +172,21 @@ impl FlatbushBuilder {
                             break;
                         }
 
-                        node_min_x = node_min_x.min(boxes[pos]);
+                        if boxes[pos] < node_min_x {
+                            node_min_x = boxes[pos];
+                        }
                         pos += 1;
-                        node_min_y = node_min_y.min(boxes[pos]);
+                        if boxes[pos] < node_min_y {
+                            node_min_y = boxes[pos];
+                        }
                         pos += 1;
-                        node_max_x = node_max_x.max(boxes[pos]);
+                        if boxes[pos] > node_max_x {
+                            node_max_x = boxes[pos]
+                        }
                         pos += 1;
-                        node_max_y = node_max_y.max(boxes[pos]);
+                        if boxes[pos] > node_max_y {
+                            node_max_y = boxes[pos]
+                        }
                         pos += 1;
                     }
 
@@ -207,17 +210,18 @@ impl FlatbushBuilder {
             num_items: self.num_items,
             num_nodes: self.num_nodes,
             level_bounds: self.level_bounds,
+            phantom: PhantomData,
         }
     }
 }
 
 /// Mutable borrow of boxes and indices
-fn split_data_borrow(
+fn split_data_borrow<N: IndexableNum>(
     data: &mut [u8],
     num_nodes: usize,
     nodes_byte_size: usize,
     indices_byte_size: usize,
-) -> (&mut [f64], MutableIndices) {
+) -> (&mut [N], MutableIndices) {
     let (boxes_buf, indices_buf) = data[8..].split_at_mut(nodes_byte_size);
     debug_assert_eq!(indices_buf.len(), indices_byte_size);
 

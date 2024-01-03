@@ -1,11 +1,12 @@
 use crate::flatbush::sort::{Sort, SortParams};
 use crate::indices::MutableIndices;
+use crate::r#type::IndexableNum;
 
 #[derive(Debug, Clone, Copy)]
 pub struct HilbertSort;
 
-impl Sort for HilbertSort {
-    fn sort(params: &mut SortParams, boxes: &mut [f64], indices: &mut MutableIndices) {
+impl<N: IndexableNum> Sort<N> for HilbertSort {
+    fn sort(params: &mut SortParams<N>, boxes: &mut [N], indices: &mut MutableIndices) {
         let width = params.max_x - params.min_x; // || 1.0;
         let height = params.max_y - params.min_y; // || 1.0;
         let mut hilbert_values: Vec<u32> = Vec::with_capacity(params.num_items);
@@ -24,10 +25,14 @@ impl Sort for HilbertSort {
                 let max_y = boxes[pos];
                 pos += 1;
 
-                let x =
-                    (hilbert_max * ((min_x + max_x) / 2. - params.min_x) / width).floor() as u32;
-                let y =
-                    (hilbert_max * ((min_y + max_y) / 2. - params.min_y) / height).floor() as u32;
+                let x = (hilbert_max
+                    * ((min_x + max_x).to_f64().unwrap() / 2. - params.min_x.to_f64().unwrap())
+                    / width.to_f64().unwrap())
+                .floor() as u32;
+                let y = (hilbert_max
+                    * ((min_y + max_y).to_f64().unwrap() / 2. - params.min_y.to_f64().unwrap())
+                    / height.to_f64().unwrap())
+                .floor() as u32;
                 hilbert_values.push(hilbert(x, y));
             }
         }
@@ -46,9 +51,9 @@ impl Sort for HilbertSort {
 
 /// Custom quicksort that partially sorts bbox data alongside the hilbert values.
 // Partially taken from static_aabb2d_index under the MIT/Apache license
-fn sort(
+fn sort<N: IndexableNum>(
     values: &mut [u32],
-    boxes: &mut [f64],
+    boxes: &mut [N],
     indices: &mut MutableIndices,
     left: usize,
     right: usize,
@@ -93,7 +98,13 @@ fn sort(
 
 /// Swap two values and two corresponding boxes.
 #[inline]
-fn swap(values: &mut [u32], boxes: &mut [f64], indices: &mut MutableIndices, i: usize, j: usize) {
+fn swap<N: IndexableNum>(
+    values: &mut [u32],
+    boxes: &mut [N],
+    indices: &mut MutableIndices,
+    i: usize,
+    j: usize,
+) {
     values.swap(i, j);
 
     let k = 4 * i;

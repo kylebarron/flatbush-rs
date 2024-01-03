@@ -5,16 +5,17 @@ use bytemuck::cast_slice;
 use crate::flatbush::index::{FlatbushRef, OwnedFlatbush};
 use crate::flatbush::traversal::{IntersectionIterator, Node};
 use crate::indices::Indices;
+use crate::r#type::IndexableNum;
 
-pub trait FlatbushIndex: Sized {
-    fn boxes(&self) -> &[f64];
+pub trait FlatbushIndex<N: IndexableNum>: Sized {
+    fn boxes(&self) -> &[N];
     fn indices(&self) -> Cow<'_, Indices>;
     fn num_items(&self) -> usize;
     fn num_nodes(&self) -> usize;
     fn node_size(&self) -> usize;
     fn level_bounds(&self) -> &[usize];
 
-    fn search(&self, min_x: f64, min_y: f64, max_x: f64, max_y: f64) -> Vec<usize> {
+    fn search(&self, min_x: N, min_y: N, max_x: N, max_y: N) -> Vec<usize> {
         let boxes = self.boxes();
         let indices = self.indices();
 
@@ -60,10 +61,10 @@ pub trait FlatbushIndex: Sized {
     }
 
     #[allow(unused_mut, unused_labels, unused_variables)]
-    fn neighbors(&self, x: f64, y: f64, max_distance: Option<f64>) -> Vec<usize> {
+    fn neighbors(&self, x: N, y: N, max_distance: Option<N>) -> Vec<usize> {
         let boxes = self.boxes();
         let indices = self.indices();
-        let max_distance = max_distance.unwrap_or(f64::INFINITY);
+        let max_distance = max_distance.unwrap_or(N::max_value());
 
         let mut outer_node_index = Some(boxes.len() - 4);
 
@@ -95,32 +96,29 @@ pub trait FlatbushIndex: Sized {
 
     fn intersection_candidates_with_other_tree<'a>(
         &'a self,
-        other: &'a impl FlatbushIndex,
+        other: &'a impl FlatbushIndex<N>,
     ) -> impl Iterator<Item = (usize, usize)> + 'a {
         IntersectionIterator::from_trees(self, other)
     }
 
-    fn root(&self) -> Node<'_, Self> {
+    fn root(&self) -> Node<'_, N, Self> {
         Node::from_root(self)
     }
 }
 
-impl FlatbushIndex for OwnedFlatbush {
-    fn boxes(&self) -> &[f64] {
+impl<N: IndexableNum> FlatbushIndex<N> for OwnedFlatbush<N> {
+    fn boxes(&self) -> &[N] {
         let data = &self.buffer;
 
-        let f64_bytes_per_element = 8;
-        let nodes_byte_length = self.num_nodes * 4 * f64_bytes_per_element;
-
+        let nodes_byte_length = self.num_nodes * 4 * N::BYTES_PER_ELEMENT;
         cast_slice(&data[8..8 + nodes_byte_length])
     }
 
     fn indices(&self) -> Cow<'_, Indices> {
         let data = &self.buffer;
 
-        let f64_bytes_per_element = 8;
         let indices_bytes_per_element = if self.num_nodes < 16384 { 2 } else { 4 };
-        let nodes_byte_length = self.num_nodes * 4 * f64_bytes_per_element;
+        let nodes_byte_length = self.num_nodes * 4 * N::BYTES_PER_ELEMENT;
         let indices_byte_length = self.num_nodes * indices_bytes_per_element;
         let indices_buf = &data[8 + nodes_byte_length..8 + nodes_byte_length + indices_byte_length];
 
@@ -144,8 +142,8 @@ impl FlatbushIndex for OwnedFlatbush {
     }
 }
 
-impl FlatbushIndex for FlatbushRef<'_> {
-    fn boxes(&self) -> &[f64] {
+impl<N: IndexableNum> FlatbushIndex<N> for FlatbushRef<'_, N> {
+    fn boxes(&self) -> &[N] {
         self.boxes
     }
 
@@ -199,11 +197,11 @@ fn upper_bound(value: usize, arr: &[usize]) -> usize {
  * @param {number} max
  */
 #[inline]
-fn axis_dist(k: f64, min: f64, max: f64) -> f64 {
+fn axis_dist<N: IndexableNum>(k: N, min: N, max: N) -> N {
     if k < min {
         min - k
     } else if k <= max {
-        0.0
+        N::zero()
     } else {
         k - max
     }

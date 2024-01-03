@@ -35,6 +35,7 @@ impl KdbushBuilder {
         assert!((2..=65535).contains(&node_size));
         assert!(num_items <= u32::MAX.try_into().unwrap());
 
+        // TODO: make generic and remove hardcoded f64
         let f64_bytes_per_element = 8;
         let coords_byte_size = num_items * 2 * f64_bytes_per_element;
         let indices_bytes_per_element = if num_items < 65536 { 2 } else { 4 };

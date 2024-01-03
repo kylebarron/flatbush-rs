@@ -5,7 +5,7 @@ use bytemuck::cast_slice;
 use crate::flatbush::HilbertSort;
 use crate::{FlatbushBuilder, FlatbushRef, OwnedFlatbush};
 
-fn create_flatbush_from_data_path(data_path: &str) -> OwnedFlatbush {
+fn create_flatbush_from_data_path(data_path: &str) -> OwnedFlatbush<f64> {
     let buffer = read(data_path).unwrap();
     let boxes_buf: &[f64] = cast_slice(&buffer);
 
@@ -33,8 +33,8 @@ fn check_buffer_equality(js_buf: &[u8], rs_buf: &[u8]) {
         "should have same header bytes"
     );
 
-    let js_flatbush = FlatbushRef::try_new(&js_buf).unwrap();
-    let rs_flatbush = FlatbushRef::try_new(&rs_buf).unwrap();
+    let js_flatbush = FlatbushRef::<f64>::try_new(&js_buf).unwrap();
+    let rs_flatbush = FlatbushRef::<f64>::try_new(&rs_buf).unwrap();
 
     assert_eq!(js_flatbush.num_items, rs_flatbush.num_items);
     assert_eq!(js_flatbush.node_size, rs_flatbush.node_size);
@@ -46,7 +46,7 @@ pub(crate) fn flatbush_js_test_data() -> Vec<f64> {
     boxes_buf.to_vec()
 }
 
-pub(crate) fn flatbush_js_test_index() -> OwnedFlatbush {
+pub(crate) fn flatbush_js_test_index() -> OwnedFlatbush<f64> {
     create_flatbush_from_data_path("fixtures/data1_input.raw")
 }
 
@@ -54,5 +54,12 @@ pub(crate) fn flatbush_js_test_index() -> OwnedFlatbush {
 fn test_flatbush_js_test_data() {
     let flatbush_js_buf = read("fixtures/data1_flatbush_js.raw").unwrap();
     let flatbush_rs_buf = create_flatbush_from_data_path("fixtures/data1_input.raw").into_inner();
+    check_buffer_equality(&flatbush_js_buf, &flatbush_rs_buf);
+}
+
+#[test]
+fn test_utah_buildings() {
+    let flatbush_js_buf = read("fixtures/utah_flatbush_js.raw").unwrap();
+    let flatbush_rs_buf = create_flatbush_from_data_path("fixtures/utah_input.raw").into_inner();
     check_buffer_equality(&flatbush_js_buf, &flatbush_rs_buf);
 }

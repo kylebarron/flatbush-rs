@@ -1,3 +1,5 @@
+use std::marker::PhantomData;
+
 use bytemuck::cast_slice;
 
 use crate::flatbush::constants::VERSION;
@@ -5,22 +7,24 @@ use crate::flatbush::error::FlatbushError;
 use crate::flatbush::r#trait::FlatbushIndex;
 use crate::flatbush::util::compute_num_nodes;
 use crate::indices::Indices;
+use crate::r#type::IndexableNum;
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct OwnedFlatbush {
+pub struct OwnedFlatbush<N: IndexableNum> {
     pub(crate) buffer: Vec<u8>,
     pub(crate) node_size: usize,
     pub(crate) num_items: usize,
     pub(crate) num_nodes: usize,
     pub(crate) level_bounds: Vec<usize>,
+    pub(crate) phantom: PhantomData<N>,
 }
 
-impl OwnedFlatbush {
+impl<N: IndexableNum> OwnedFlatbush<N> {
     pub fn into_inner(self) -> Vec<u8> {
         self.buffer
     }
 
-    pub fn as_flatbush(&self) -> FlatbushRef {
+    pub fn as_flatbush(&self) -> FlatbushRef<N> {
         FlatbushRef {
             boxes: self.boxes(),
             indices: self.indices().into_owned(),
@@ -32,15 +36,15 @@ impl OwnedFlatbush {
     }
 }
 
-impl AsRef<[u8]> for OwnedFlatbush {
+impl<N: IndexableNum> AsRef<[u8]> for OwnedFlatbush<N> {
     fn as_ref(&self) -> &[u8] {
         &self.buffer
     }
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct FlatbushRef<'a> {
-    pub(crate) boxes: &'a [f64],
+pub struct FlatbushRef<'a, N: IndexableNum> {
+    pub(crate) boxes: &'a [N],
     pub(crate) indices: Indices<'a>,
     pub(crate) node_size: usize,
     pub(crate) num_items: usize,
@@ -48,7 +52,7 @@ pub struct FlatbushRef<'a> {
     pub(crate) level_bounds: Vec<usize>,
 }
 
-impl<'a> FlatbushRef<'a> {
+impl<'a, N: IndexableNum> FlatbushRef<'a, N> {
     pub fn try_new<T: AsRef<[u8]>>(data: &'a T) -> Result<Self, FlatbushError> {
         let data = data.as_ref();
         // TODO: validate length of slice?
@@ -75,9 +79,8 @@ impl<'a> FlatbushRef<'a> {
 
         let (num_nodes, level_bounds) = compute_num_nodes(num_items, node_size);
 
-        let f64_bytes_per_element = 8;
         let indices_bytes_per_element = if num_nodes < 16384 { 2 } else { 4 };
-        let nodes_byte_length = num_nodes * 4 * f64_bytes_per_element;
+        let nodes_byte_length = num_nodes * 4 * N::BYTES_PER_ELEMENT;
         let indices_byte_length = num_nodes * indices_bytes_per_element;
 
         // TODO: assert length of `data` matches expected
@@ -95,7 +98,7 @@ impl<'a> FlatbushRef<'a> {
         })
     }
 
-    pub fn search(&self, min_x: f64, min_y: f64, max_x: f64, max_y: f64) -> Vec<usize> {
+    pub fn search(&self, min_x: N, min_y: N, max_x: N, max_y: N) -> Vec<usize> {
         let mut outer_node_index = Some(self.boxes.len() - 4);
 
         let mut queue = vec![];
